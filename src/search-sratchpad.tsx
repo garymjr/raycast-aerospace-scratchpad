@@ -1,4 +1,4 @@
-import { Action, ActionPanel, List, showToast } from "@raycast/api";
+import { Action, ActionPanel, Icon, List, showToast, Toast } from "@raycast/api";
 import { runAppleScript } from "@raycast/utils";
 import { useEffect, useState } from "react";
 import React from "react";
@@ -85,7 +85,7 @@ export default function Command() {
             key={window.id}
             title={window.title}
             subtitle={window.appName}
-            icon="🪟"
+            icon={Icon.Window}
             actions={
               <ActionPanel>
                 <Action title={`Move to Workspace ${currentWorkspace}`} onAction={() => moveWindow(window.id)} />
