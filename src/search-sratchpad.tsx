@@ -9,6 +9,41 @@ interface AeroSpaceWindow {
   title: string;
 }
 
+let cachedAerospacePath: string | null = null;
+
+async function getAerospacePath(): Promise<string> {
+  if (cachedAerospacePath) {
+    return cachedAerospacePath;
+  }
+
+  const commonPaths = ["/opt/homebrew/bin/aerospace", "/usr/local/bin/aerospace", "/opt/aerospace/bin/aerospace"];
+
+  for (const path of commonPaths) {
+    try {
+      await runAppleScript(`do shell script "test -x '${path}'"`);
+      cachedAerospacePath = path;
+      return path;
+    } catch {
+      continue;
+    }
+  }
+
+  try {
+    const whichOutput = await runAppleScript(
+      'do shell script "PATH=$PATH:/opt/homebrew/bin:/usr/local/bin which aerospace"',
+    );
+    const path = whichOutput.trim();
+    if (path) {
+      cachedAerospacePath = path;
+      return path;
+    }
+  } catch {
+    // PATH search failed
+  }
+
+  throw new Error("AeroSpace not found. Please install AeroSpace (brew install aerospace) or ensure it's in your PATH");
+}
+
 export default function Command() {
   const [windows, setWindows] = useState<AeroSpaceWindow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,14 +56,15 @@ export default function Command() {
   async function loadWindows() {
     try {
       setIsLoading(true);
+      const aerospacePath = await getAerospacePath();
 
       const workspace = await runAppleScript(
-        "do shell script \"/opt/homebrew/bin/aerospace list-workspaces --focused --format '%{workspace}'\"",
+        `do shell script "${aerospacePath} list-workspaces --focused --format '%{workspace}'"`,
       );
       setCurrentWorkspace(workspace.trim());
 
       const windowsOutput = await runAppleScript(
-        "do shell script \"/opt/homebrew/bin/aerospace list-windows --workspace S --format '%{window-id}%{tab}%{app-name}%{tab}%{window-title}'\"",
+        `do shell script "${aerospacePath} list-windows --workspace S --format '%{window-id}%{tab}%{app-name}%{tab}%{window-title}'"`,
       );
 
       const lines = windowsOutput.trim().split(/\r|\n/).filter(Boolean);
@@ -38,11 +74,19 @@ export default function Command() {
       });
 
       setWindows(parsed);
-    } catch {
+    } catch (error) {
+      let title = "Failed to load windows";
+      let message = "Check that AeroSpace is running";
+
+      if (error instanceof Error && error.message.includes("AeroSpace not found")) {
+        title = "AeroSpace not found";
+        message = "Install AeroSpace (brew install aerospace) or ensure it's in your PATH";
+      }
+
       showToast({
         style: Toast.Style.Failure,
-        title: "Failed to load windows",
-        message: "Check that AeroSpace is running",
+        title,
+        message,
       });
       setWindows([]);
     } finally {
@@ -52,10 +96,11 @@ export default function Command() {
 
   async function moveWindow(windowId: string) {
     try {
+      const aerospacePath = await getAerospacePath();
       await runAppleScript(
-        `do shell script "/opt/homebrew/bin/aerospace move-node-to-workspace ${currentWorkspace} --window-id ${windowId}"`,
+        `do shell script "${aerospacePath} move-node-to-workspace ${currentWorkspace} --window-id ${windowId}"`,
       );
-      await runAppleScript(`do shell script "/opt/homebrew/bin/aerospace focus --window-id ${windowId}"`);
+      await runAppleScript(`do shell script "${aerospacePath} focus --window-id ${windowId}"`);
 
       showToast({
         style: Toast.Style.Success,
@@ -63,10 +108,19 @@ export default function Command() {
       });
 
       loadWindows();
-    } catch {
+    } catch (error) {
+      let title = "Failed to move window";
+      let message = "";
+
+      if (error instanceof Error && error.message.includes("AeroSpace not found")) {
+        title = "AeroSpace not found";
+        message = "Install AeroSpace (brew install aerospace) or ensure it's in your PATH";
+      }
+
       showToast({
         style: Toast.Style.Failure,
-        title: "Failed to move window",
+        title,
+        message,
       });
     }
   }
